@@ -11,6 +11,10 @@ GPUParticle recreates Unity Shuriken particle features entirely in the vertex sh
 
 Most Shuriken modules supported. VR compatible.
 
+|                                   |                                   |
+|-----------------------------------|-----------------------------------|
+| ![Properties 1](properties-0.png) | ![Properties 2](properties-1.png) |
+
 **Limitations:**
 - World Space only
 - Constant values only
