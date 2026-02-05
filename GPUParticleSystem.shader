@@ -1,9 +1,9 @@
-Shader "GekikaraStore/GPUParticle"
+Shader "GekikaraStore/GPUParticleSystem"
 {
     Properties
     {
         [HideInInspector] shader_is_using_thry_editor("", Float) = 0
-        [HideInInspector] shader_master_label("<b><i><color=#858585>G</color><color=#9D9D9D>P</color><color=#B5B5B5>U</color><color=#CECECE>P</color><color=#E6E6E6>a</color><color=#FFFFFF>r</color><color=#E6E6E6>t</color><color=#CECECE>i</color><color=#B5B5B5>c</color><color=#9D9D9D>l</color><color=#858585>e</color></i></b>", Float) = 0
+        [HideInInspector] shader_master_label("GPU Particle System", Float) = 0
         [ThryShaderOptimizerLockButton] _ShaderOptimizerEnabled ("", Int) = 0
 
         // ============================================================================
