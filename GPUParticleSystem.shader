@@ -105,7 +105,7 @@ Shader "GekikaraStore/GPUParticleSystem"
         // Size over Lifetime
         // ============================================================================
         [HideInInspector] m_start_size ("Size over Lifetime", Float) = 0
-            [VectorLabel(X, Y)] _SizeOverLifetime ("Size", Vector) = (1, 1, 0, 0)
+            [VectorLabel(Start, End)] _SizeOverLifetime ("Size", Vector) = (1, 1, 0, 0)
         [HideInInspector] m_end_size ("", Float) = 0
         
         // ============================================================================

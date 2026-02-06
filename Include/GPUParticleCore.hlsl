@@ -334,9 +334,8 @@ float3 apply_velocity_limit(float3 velocity, float3 limit, float dampen, float d
     adjusted_dampen *= lerp(1.0, particle_size, (float)multiply_by_size);
     adjusted_dampen *= lerp(1.0, length(velocity), (float)multiply_by_velocity);
 
-    // Padé [1,1] approximation: exp(-x) ≈ (1 - 0.5x) / (1 + 0.5x)
-    float t = adjusted_dampen * age;
-    velocity *= (1.0 - 0.5 * t) / (1.0 + 0.5 * t);
+    // exp2 via SFU (1 cycle on SM5.0+, more accurate than Padé [1,1])
+    velocity *= exp2(-adjusted_dampen * age * 1.4426950408889634);
     velocity *= 1.0 / (1.0 + drag * age);
 
     // Per-axis limit (branchless)
@@ -553,8 +552,9 @@ particle_v2f process_particle_vs(particle_appdata v, ParticleData p)
             noise_octaves, p.noise_octave_multiplier, p.noise_octave_scale);
     }
 
-    // Size: start_size * size_over_lifetime
-    float2 final_size = start_size * p.size_over_lifetime;
+    // Size: start_size * size_over_lifetime (lerp Start→End by age)
+    float sol = lerp(p.size_over_lifetime.x, p.size_over_lifetime.y, p_age);
+    float2 final_size = start_size * sol;
 
     [branch]
     if (has_noise && p.noise_size_amount > 0.0001)

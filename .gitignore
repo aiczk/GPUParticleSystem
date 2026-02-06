@@ -24,3 +24,4 @@ gradient_*.png.meta
 # Optimized shaders (Thry generated)
 OptimizedShaders/
 OptimizedShaders.meta
+Prefab.meta
