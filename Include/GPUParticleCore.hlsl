@@ -65,8 +65,8 @@ struct ParticleData
     float cone_length;
     float donut_radius;
     float3 shape_position;
-    float3 shape_rotation;
     float3 shape_scale;
+    float3x3 shape_rot_matrix;  // pre-computed rotation matrix (CPU or vertex)
     // Main
     float lifetime;
     float start_speed;
@@ -143,7 +143,7 @@ void rand8(float2 seed, out float r0, out float r1, out float r2, out float r3,
 float compute_arc_theta(float r0, float arc_frac, int arc_mode, float arc_speed, float arc_spread,
                         float time, int particle_id, int max_particles)
 {
-    [flatten]
+    [branch]
     if (arc_mode == 0) // Random
     {
         // Apply spread: discrete positions within arc
@@ -172,6 +172,12 @@ float compute_arc_theta(float r0, float arc_frac, int arc_mode, float arc_speed,
     }
 }
 
+// Approximate cube root via IEEE 754 bit trick (~5% error, sufficient for distribution)
+inline float approx_cbrt(float x)
+{
+    return asfloat(asint(x) / 3 + 0x2A555556);
+}
+
 // ============================================================================
 // Distribution
 // ============================================================================
@@ -185,14 +191,14 @@ void distribution_position(float r0, float r1, float r2, float t, int distributi
     float arc_frac = (arc > 0.0001) ? (arc * 0.002777778) : 1.0;  // 1/360 = 0.002777778
     float theta = compute_arc_theta(r0, arc_frac, arc_mode, arc_speed, arc_spread, t, particle_id, max_particles);
 
-    [flatten]
+    [branch]
     if (distribution == 0)  // Sphere
     {
         float u = r1 * 2.0 - 1.0;
         float s_th, c_th;
         sincos(theta, s_th, c_th);
         float su = sqrt(1.0 - u * u);
-        float radius = lerp(1.0, pow(r2, 0.333333), radius_thickness);
+        float radius = lerp(1.0, approx_cbrt(r2), radius_thickness);
         base_pos = float3(su * c_th, u, su * s_th) * radius;
     }
     else if (distribution == 1)  // Cube
@@ -205,7 +211,7 @@ void distribution_position(float r0, float r1, float r2, float t, int distributi
         float s_th, c_th;
         sincos(theta, s_th, c_th);
         float su = sqrt(1.0 - u * u);
-        float radius = lerp(1.0, pow(r2, 0.333333), radius_thickness);
+        float radius = lerp(1.0, approx_cbrt(r2), radius_thickness);
         base_pos = float3(su * c_th, u, su * s_th) * radius;
     }
     else if (distribution == 3)  // Circle
@@ -348,22 +354,14 @@ float3 apply_particle_noise_position(float3 pos, float3 seed, float time,
                                       float strength, float freq, float scroll,
                                       int octaves, float octave_mult, float octave_scale)
 {
-    float3 sample_pos = pos * freq;
-    float t = time * scroll;
+    float3 noise_input = pos * freq + seed;
+    noise_input.z += time * scroll;
     float3 noise_offset;
-    [flatten]
+    [branch]
     if (octaves > 1)
-    {
-        noise_offset.x = fbm3d(float3(sample_pos.yz + seed.x, t), octaves, octave_mult, octave_scale);
-        noise_offset.y = fbm3d(float3(sample_pos.xz + seed.y, t + 100.0), octaves, octave_mult, octave_scale);
-        noise_offset.z = fbm3d(float3(sample_pos.xy + seed.z, t + 200.0), octaves, octave_mult, octave_scale);
-    }
+        noise_offset = fbm3d_vec3(noise_input, octaves, octave_mult, octave_scale);
     else
-    {
-        noise_offset.x = simplex3d(float3(sample_pos.yz + seed.x, t));
-        noise_offset.y = simplex3d(float3(sample_pos.xz + seed.y, t + 100.0));
-        noise_offset.z = simplex3d(float3(sample_pos.xy + seed.z, t + 200.0));
-    }
+        noise_offset = simplex3d_vec3(noise_input);
     return pos + noise_offset * strength;
 }
 
@@ -372,12 +370,7 @@ float3 apply_particle_noise_rotation(float3 seed, float time,
 {
     if (abs(strength) < 0.0001)
         return float3(0, 0, 0);
-    float t = time * scroll;
-    float3 noise_rot;
-    noise_rot.x = simplex3d(float3(seed.xy, t + 300.0));
-    noise_rot.y = simplex3d(float3(seed.yz, t + 400.0));
-    noise_rot.z = simplex3d(float3(seed.xz, t + 500.0));
-    return noise_rot * strength * DEG2_RAD;
+    return simplex3d_vec3(float3(seed.xy, time * scroll + 300.0)) * strength * DEG2_RAD;
 }
 
 float apply_particle_noise_size(float3 seed, float time,
@@ -392,11 +385,7 @@ float apply_particle_noise_size(float3 seed, float time,
 
 float3 apply_force_randomize(float3 force, float3 seed, float time, float randomize)
 {
-    float3 noise_force;
-    noise_force.x = simplex3d(float3(seed.xy, time * 2.0));
-    noise_force.y = simplex3d(float3(seed.yz, time * 2.0 + 100.0));
-    noise_force.z = simplex3d(float3(seed.xz, time * 2.0 + 200.0));
-    return force + noise_force * randomize;
+    return force + simplex3d_vec3(float3(seed.xy, time * 2.0)) * randomize;
 }
 
 // ============================================================================
@@ -408,9 +397,22 @@ float3 billboard_vertex(float3 center, float3 right, float3 up, float2 quad_size
     [branch]
     if (has_rot)
     {
-        float3x3 rot = rotation_matrix(rotation);
-        right = mul(rot, right);
-        up = mul(rot, up);
+        [branch]
+        if (rotation.x == 0 && rotation.y == 0)
+        {
+            // Z-axis only fast path: sincos x1 instead of x3
+            float s, c;
+            sincos(rotation.z, s, c);
+            float3 r0 = right * c + up * s;
+            up = up * c - right * s;
+            right = r0;
+        }
+        else
+        {
+            float3x3 rot = rotation_matrix(rotation);
+            right = mul(rot, right);
+            up = mul(rot, up);
+        }
     }
     right *= quad_size.x;
     up *= quad_size.y;
@@ -485,12 +487,7 @@ particle_v2f process_particle_vs(particle_appdata v, ParticleData p)
 
     // Apply shape transform (Scale → Rotate → Translate)
     pos *= p.shape_scale;
-    [branch]
-    if (any(p.shape_rotation != 0))
-    {
-        float3 shape_angles = p.shape_rotation * DEG2_RAD;
-        pos = mul(rotation_matrix(shape_angles), pos);
-    }
+    pos = mul(p.shape_rot_matrix, pos);
     pos += p.shape_position;
 
     // Calculate spawn_delay in simulation time units (must match 't')
@@ -573,7 +570,7 @@ particle_v2f process_particle_vs(particle_appdata v, ParticleData p)
     float2 quad_size = 0.01 * final_size;
 
     // Calculate speed for by-speed modules
-    float current_speed = length(rise_off * start_speed + force_offset);
+    float current_speed = length(rise_off + force_offset);
 
     // Size by Speed (branchless)
     {
@@ -583,13 +580,17 @@ particle_v2f process_particle_vs(particle_appdata v, ParticleData p)
         quad_size *= lerp(float2(1, 1), p.size_by_speed, speed_t * range_active);
     }
 
-    // Near-camera fillrate optimization: shrink particles close to camera
-    float cam_dist = length(cam_pos - world_center);
+    // Near-camera fillrate optimization: rsqrt shared with billboard forward
+    float3 to_cam = cam_pos - world_center;
+    float cam_dist_sq = dot(to_cam, to_cam);
+    float cam_dist_inv = rsqrt(cam_dist_sq);
+    float cam_dist = cam_dist_sq * cam_dist_inv;
     quad_size *= saturate(cam_dist);  // 0-1m: shrink, 1m+: full size
 
-    // Frustum culling (use max dimension)
+    // Frustum culling (pre-compute clip coords for reuse)
     float cull_size = max(quad_size.x, quad_size.y) * 2.0;
-    if (frustum_cull_world(world_center, cull_size))
+    float4 clip_center = mul(UNITY_MATRIX_VP, float4(world_center, 1.0));
+    if (frustum_cull_clip(clip_center, cull_size))
         GPUP_CULL_VERTEX(o);
 
     // Billboard rotation with flip
@@ -616,13 +617,14 @@ particle_v2f process_particle_vs(particle_appdata v, ParticleData p)
         has_spin = true;
     }
 
-    // Facing billboard (camera-facing)
-    float3 forward = normalize(cam_pos - world_center);
+    // Facing billboard (camera-facing, reuse rsqrt from cam_dist)
+    float3 forward = to_cam * cam_dist_inv;
     float3 bb_right = normalize(cross(float3(0, 1, 0), forward));
     float3 bb_up = cross(forward, bb_right);
     float3 world_pos = billboard_vertex(world_center, bb_right, bb_up, quad_size, spin, has_spin, corner);
 
-    o.vertex = mul(UNITY_MATRIX_VP, float4(world_pos, 1.0));
+    // Reuse clip_center + billboard offset (avoids redundant VP multiply of world_center)
+    o.vertex = clip_center + mul(UNITY_MATRIX_VP, float4(world_pos - world_center, 0.0));
 
     o.uv = corner;
 

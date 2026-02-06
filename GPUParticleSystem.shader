@@ -50,6 +50,9 @@ Shader "GekikaraStore/GPUParticleSystem"
             [Vector3] _ShapePosition ("Position", Vector) = (0, 0, 0, 0)
             [Vector3] _ShapeRotation ("Rotation", Vector) = (0, 0, 0, 0)
             [Vector3] _ShapeScale ("Scale", Vector) = (1, 1, 1, 0)
+            [HideInInspector] _ShapeRotMatrix0 ("", Vector) = (1, 0, 0, 0)
+            [HideInInspector] _ShapeRotMatrix1 ("", Vector) = (0, 1, 0, 0)
+            [HideInInspector] _ShapeRotMatrix2 ("", Vector) = (0, 0, 1, 0)
         [HideInInspector] m_end_shape ("", Float) = 0
 
         // ============================================================================
@@ -243,6 +246,9 @@ Shader "GekikaraStore/GPUParticleSystem"
             float4 _ShapePosition;
             float4 _ShapeRotation;
             float4 _ShapeScale;
+            float4 _ShapeRotMatrix0;
+            float4 _ShapeRotMatrix1;
+            float4 _ShapeRotMatrix2;
 
             // Velocity
             float4 _LinearVelocity;
@@ -334,8 +340,12 @@ Shader "GekikaraStore/GPUParticleSystem"
                 p.cone_length = _ConeLength;
                 p.donut_radius = _DonutRadius;
                 p.shape_position = _ShapePosition.xyz;
-                p.shape_rotation = _ShapeRotation.xyz;
                 p.shape_scale = _ShapeScale.xyz;
+                p.shape_rot_matrix = float3x3(
+                    _ShapeRotMatrix0.xyz,
+                    _ShapeRotMatrix1.xyz,
+                    _ShapeRotMatrix2.xyz
+                );
 
                 // Noise FBM
                 p.noise_octave_multiplier = _NoiseOctaveMultiplier;

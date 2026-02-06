@@ -59,4 +59,12 @@ inline bool frustum_cull_world(float3 world_pos, float margin)
         || clip.z < -margin || clip.z > w;
 }
 
+// Frustum cull from pre-computed clip coordinates (avoids redundant VP multiply)
+inline bool frustum_cull_clip(float4 clip, float margin)
+{
+    float w = clip.w + margin;
+    return clip.x < -w || clip.x > w || clip.y < -w || clip.y > w
+        || clip.z < -margin || clip.z > w;
+}
+
 #endif // GPUP_CORE_INCLUDED
