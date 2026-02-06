@@ -135,6 +135,7 @@ Shader "GekikaraStore/GPUParticleSystem"
         // Noise
         // ============================================================================
         [HideInInspector] m_start_noise ("Noise", Float) = 0
+            [Enum(Lite, 0, Rich, 1)] _NoiseQuality ("Quality", Int) = 1
             _NoiseStrength ("Strength", Float) = 0
             _NoiseFrequency ("Frequency", Float) = 1
             _NoiseScrollSpeed ("Scroll Speed", Float) = 1
@@ -204,8 +205,6 @@ Shader "GekikaraStore/GPUParticleSystem"
             #pragma multi_compile_instancing
 
             #include "UnityCG.cginc"
-            #include "Include/Core.hlsl"
-            #include "Include/GPUParticleCore.hlsl"
 
             // ============================================================================
             // Property Declarations
@@ -269,6 +268,7 @@ Shader "GekikaraStore/GPUParticleSystem"
             int _ForceRandomize;
 
             // Noise
+            float _NoiseQuality;
             float _NoiseStrength;
             float _NoiseFrequency;
             float _NoiseOctaveMultiplier;
@@ -304,6 +304,9 @@ Shader "GekikaraStore/GPUParticleSystem"
 
             // Renderer
             sampler2D _MainTex;
+
+            #include "Include/Core.hlsl"
+            #include "Include/GPUParticleCore.hlsl"
 
             // ============================================================================
             // Vertex Shader

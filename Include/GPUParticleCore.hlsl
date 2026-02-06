@@ -347,15 +347,39 @@ float3 apply_velocity_limit(float3 velocity, float3 limit, float dampen, float d
 }
 
 // ============================================================================
-// Noise Functions (with FBM support)
+// Noise Functions (ifex strips unused quality path on optimize)
 // ============================================================================
 float3 apply_particle_noise_position(float3 pos, float3 seed, float time,
                                       float strength, float freq, float scroll,
                                       int octaves, float octave_mult, float octave_scale)
 {
+    float3 noise_offset;
+    //ifex _NoiseQuality==0
+    [branch]
+    if (_NoiseQuality > 0)
+    {
+        // Rich: independent evaluation per axis
+        float3 sp = pos * freq;
+        float t = time * scroll;
+        [branch]
+        if (octaves > 1)
+        {
+            noise_offset.x = fbm3d(float3(sp.yz + seed.x, t), octaves, octave_mult, octave_scale);
+            noise_offset.y = fbm3d(float3(sp.xz + seed.y, t + 100.0), octaves, octave_mult, octave_scale);
+            noise_offset.z = fbm3d(float3(sp.xy + seed.z, t + 200.0), octaves, octave_mult, octave_scale);
+        }
+        else
+        {
+            noise_offset.x = simplex3d(float3(sp.yz + seed.x, t));
+            noise_offset.y = simplex3d(float3(sp.xz + seed.y, t + 100.0));
+            noise_offset.z = simplex3d(float3(sp.xy + seed.z, t + 200.0));
+        }
+        return pos + noise_offset * strength;
+    }
+    //endex
+    // Lite: single evaluation with permuted gradients
     float3 noise_input = pos * freq + seed;
     noise_input.z += time * scroll;
-    float3 noise_offset;
     [branch]
     if (octaves > 1)
         noise_offset = fbm3d_vec3(noise_input, octaves, octave_mult, octave_scale);
@@ -369,6 +393,18 @@ float3 apply_particle_noise_rotation(float3 seed, float time,
 {
     if (abs(strength) < 0.0001)
         return float3(0, 0, 0);
+    //ifex _NoiseQuality==0
+    [branch]
+    if (_NoiseQuality > 0)
+    {
+        float t = time * scroll;
+        float3 n;
+        n.x = simplex3d(float3(seed.xy, t + 300.0));
+        n.y = simplex3d(float3(seed.yz, t + 400.0));
+        n.z = simplex3d(float3(seed.xz, t + 500.0));
+        return n * strength * DEG2_RAD;
+    }
+    //endex
     return simplex3d_vec3(float3(seed.xy, time * scroll + 300.0)) * strength * DEG2_RAD;
 }
 
@@ -378,12 +414,22 @@ float apply_particle_noise_size(float3 seed, float time,
     if (abs(strength) < 0.0001)
         return 1.0;
     float t = time * scroll;
-    float noise_size = simplex3d(float3(seed.xy * freq, t + 600.0));
-    return 1.0 + noise_size * strength;
+    return 1.0 + simplex3d(float3(seed.xy * freq, t + 600.0)) * strength;
 }
 
 float3 apply_force_randomize(float3 force, float3 seed, float time, float randomize)
 {
+    //ifex _NoiseQuality==0
+    [branch]
+    if (_NoiseQuality > 0)
+    {
+        float3 n;
+        n.x = simplex3d(float3(seed.xy, time * 2.0));
+        n.y = simplex3d(float3(seed.yz, time * 2.0 + 100.0));
+        n.z = simplex3d(float3(seed.xz, time * 2.0 + 200.0));
+        return force + n * randomize;
+    }
+    //endex
     return force + simplex3d_vec3(float3(seed.xy, time * 2.0)) * randomize;
 }
 
